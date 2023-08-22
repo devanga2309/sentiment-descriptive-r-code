@@ -1,0 +1,200 @@
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(ROSE)
+library(smotefamily)
+library(readxl)
+
+#Load dataset
+training  <- read.csv("C:/Users/devan/Downloads/training_data.csv")
+df <-data.frame(training)
+View(df)
+str(df)
+View(df_copy)
+
+df_copy <- df
+colnames(df_copy)
+
+# Identify the column "ServiceArea" to be deleted
+column_to_delete <- c("ServiceArea","CustomerID")
+
+# Delete the column "ServiceArea" from the dataframe
+df_copy <- df_copy[, !names(df_copy) %in% column_to_delete]
+
+# Display the resulting dataframe without the "ServiceArea" column
+print(df_copy)
+
+
+
+dummy<- dummyVars("~ .",df_copy, fullRank=TRUE)
+df_copy <- data.frame(predict(dummy, newdata = df_copy))
+View(df_copy)
+
+
+
+df_copy$ChurnYes <- as.factor(df_copy$ChurnYes)
+Churn <- df_copy[, 1]
+
+# Remove the first column from the dataset
+df_copy <- df_copy[, -1]
+
+# Add the first column to the last position in the dataset
+df_copy <- cbind(df_copy, Churn)
+
+print(df_copy)
+
+# Step 2: Subset the dataset to keep only rows without missing values
+df_copy <- df_copy[rows_with_missing, ]
+df_copy<- df_copy[complete.cases(df_copy),]
+selected_columns <- c(
+  "CurrentEquipmentDays",
+  "MadeCallToRetentionTeamYes",
+  "RetentionCalls",
+  "RetentionOffersAccepted",
+  "ActiveSubs",
+  "Churn"
+)
+library(caret)
+library(zoo)
+library(ROSE)
+library(dplyr)
+
+df_subset <- df_copy[, selected_columns]
+
+
+df_subset<-df_subset[complete.cases(df_subset),]
+
+
+set.seed(49012893)
+myIndex1<-createDataPartition(df_subset$Churn, p=0.8, list=FALSE)
+trainSet1 <- df_subset[myIndex1,]
+validationSet1<-df_subset[-myIndex1,]
+validationSet1<- validationSet1[complete.cases(validationSet1),]
+trainSet1<-trainSet1[complete.cases(trainSet1),]
+
+View(validationSet1)
+nrow(validationSet1)
+nrow(trainSet1)
+
+for(x in 1:(ncol(trainSet1)-1)){
+  validationSet1[,x] <- (validationSet1[,x] - mean(trainSet1[,x]))/sd(trainSet1[,x])
+}
+trainSet1[,-ncol(trainSet1)] <- scale(trainSet1[,-ncol(trainSet1)])
+
+1:(ncol(trainSet1)-1)
+
+View(validationSet1)
+
+ncol(trainSet1)
+sqrt.num.vars=floor(sqrt(ncol(df_subset)-1))
+table(trainSet1$Churn)
+print(table(trainSet1$Churn)/nrow(trainSet1))%>%round(.,2)
+
+View(validationSet1)
+
+
+
+
+set.seed(49012893)
+View(trainSet1)
+
+
+fit_orig_data <- randomForest(Churn ~ ., data = trainSet1, ntree = 100, mtry = sqrt.num.vars)
+
+
+pred_orig_data <- predict(fit_orig_data, newdata=validationSet1)
+View(pred_orig_data)
+View(as.matrix(pred_orig_data))
+
+prev = sum(trainSet1$Churn==1)/nrow(trainSet1)
+pred_prob_orig_data <- predict(fit_orig_data, newdata=validationSet1,
+                               type='prob')
+
+pred_orig_data_cutoff= ifelse(pred_prob_orig_data[,2]>prev,1,0)
+#Undersamppling
+
+set.seed(49012893)
+randomUndersamp_trainSet1 <- ovun.sample(Churn ~., data=trainSet1, method="under",
+                                        N= 2*sum(trainSet1$Churn==1))
+
+table(randomUndersamp_trainSet1$data$Churn)
+
+
+set.seed(49012893)
+fit_RF_randomUndersamp1<- randomForest(Churn~.,
+                                       data=randomUndersamp_trainSet1$data,ntree=200, mtry=sqrt.num.vars)
+
+pred_RF_randomUndersamp1<-predict(fit_RF_randomUndersamp1,
+                                  newdata=validationSet1)
+View(pred_RF_randomUndersamp1)
+View(fit_RF_randomUndersamp1)
+View(as.matrix(pred_RF_randomUndersamp1))
+
+
+
+#oversampling minority using SMOTE
+smote_trainSet1<-SMOTE(trainSet1[-ncol(trainSet1)],trainSet1$Churn)
+table(smote_trainSet1$data$class)/nrow(smote_trainSet1$data)
+smote_trainSet1$data$class <- as.factor(smote_trainSet1$data$class)
+set.seed(49012893)
+fit_RF_SMOTE <- randomForest(class~.,data=smote_trainSet1$data, ntree=100,mtry=sqrt.num.vars)
+pred_RF_SMOTE<- predict(fit_RF_SMOTE, newdata= validationSet1)
+colnames(trainSet1)
+
+
+#Oversampling minoerity with randcim sampling
+randomOversamp_trainSet <- ovun.sample(Churn~.,data=trainSet1, method="over", N= 2*sum(trainSet1$Churn==0))
+
+table(randomOversamp_trainSet$data$Churn)
+set.seed(49012893)
+fit_RF_randomOversamp <- randomForest(Churn~., data=randomOversamp_trainSet$data,ntree=100,
+                                      newdata=validationSet1)
+
+pred_RF_randomOversamp<- predict(fit_RF_randomOversamp, newdata=validationSet1)
+
+library(caret)
+
+# Extract feature importance scores from the Random Forest model
+feature_importance <- varImp(fit_orig_data)
+
+# Print the feature importance scores
+print(feature_importance)
+colnames(feature_importance)
+View(feature_importance)
+
+
+
+validationResultsMatrix <- matrix(data = NA, nrow = 5, ncol = 6)
+colnames(validationResultsMatrix) <- c('Method', 'Accuracy', 'Sensitivity', 'Specificity', 'PPV', 'NPV')
+View(validationResultsMatrix)
+validationResultsMatrix[1, ] = c('Raw Imbalanced Data: Cutoff = 0.5', confusionMatrix(pred_orig_data,
+                                                                                      validationSet1$Churn, positive = "1")$overall[1]%>%round(.,3),
+                                 confusionMatrix(pred_orig_data,validationSet1$Churn,
+                                                 positive ="1")$byClass[1:4] %>%round(., 3))
+
+
+
+validationResultsMatrix[2,]= c('Raw Imbalanced Data= Prevalence', confusionMatrix(as.factor(pred_orig_data_cutoff),
+                                                                                  validationSet1$Churn, positive = "1")$overall[1]%>%round(.,3),
+                               confusionMatrix(as.factor(pred_orig_data_cutoff),validationSet1$Churn,
+                                               positive ="1")$byClass[1:4] %>%round(., 3))
+
+
+validationResultsMatrix[3, ] = c('Random undersampling majority class', confusionMatrix(pred_RF_randomUndersamp1,
+                                                                                        validationSet1$Churn, positive = "1")$overall[1]%>%round(.,3),
+                                 confusionMatrix(pred_RF_randomUndersamp1,validationSet1$Churn,
+                                                 positive ="1")$byClass[1:4] %>%round(., 3))
+
+validationResultsMatrix[4, ] = c('smote oversampling minority class', confusionMatrix(pred_RF_SMOTE,
+                                                                                      validationSet1$Churn, positive = "1")$overall[1]%>%round(.,3),
+                                 confusionMatrix(pred_RF_SMOTE,validationSet1$Churn,
+                                                 positive ="1")$byClass[1:4] %>%round(., 3))
+
+validationResultsMatrix[5, ] = c('random oversampling minority class', confusionMatrix(pred_RF_randomOversamp,
+                                                                                       validationSet1$Churn, positive = "1")$overall[1]%>%round(.,3),
+                                 confusionMatrix(pred_RF_randomOversamp,validationSet1$Churn,
+                                                 positive ="1")$byClass[1:4] %>%round(., 3))
+
+
+
+print(validationResultsMatrix)
