@@ -1,0 +1,134 @@
+library(readxl)
+samsung_customer <- read_excel("C:\\Users\\devan\\Downloads\\Customer_Tweets_Samsung v1.xlsx", sheet = 'Customer Samsung Summary')
+View(samsung_customer)
+install.packages("SentimentAnalysis")
+install.packages("SnowballC")
+library("SentimentAnalysis")
+
+
+
+library("dplyr")
+
+# Split the data into two random subsets
+set.seed(42)  # This is to ensure reproducibility of random sampling
+sampled_data_1 <- samsung_customer %>%
+  sample_n(nrow(samsung_customer) / 2)
+
+sampled_data_2 <- anti_join(samsung_customer, sampled_data_1)
+
+# Perform sentiment analysis on the first half
+sentiment_1 <- analyzeSentiment(sampled_data_1$text)
+sentimentPolarity = convertToDirection(sentiment_1$SentimentQDAP)
+continuous_scores <-sentiment_1$SentimentQDAP
+sampled_data_1$continuous_sentiment <- continuous_scores
+
+
+ClassifiedReviews = data.frame(review = sampled_data_1$text, sentiment = sentimentPolarity)
+write.csv(ClassifiedReviews, file=" ClassifiedReviews.csv")
+View(ClassifiedReviews)
+View(samsung_customer)
+
+
+
+
+# Perform sentiment analysis on the second half
+sentiment_2 <- analyzeSentiment(sampled_data_2$text)
+continuous_scores1 <-sentiment_2$SentimentQDAP
+sampled_data_2$continuous_sentiment <- continuous_scores1
+sentimentPolarity = convertToDirection(sentiment_2$SentimentQDAP)
+ClassifiedReviews1 = data.frame(review = sampled_data_2$text, sentiment = sentimentPolarity)
+write.csv(ClassifiedReviews1, file=" ClassifiedReviews.csv")
+View(ClassifiedReviews1)
+combined_data <- rbind(ClassifiedReviews, ClassifiedReviews1)
+View(combined_data)
+
+
+sentiment_distribution <- table(combined_data$sentiment)
+percentage_sentiment <- prop.table(sentiment_distribution) * 100
+
+View(sampled_data_1)
+View(sampled_data_2)
+combined_data2 <- rbind(sampled_data_2, sampled_data_1)
+View(combined_data2)
+
+
+library(ggplot2)
+
+# Convert 'created_at' to a POSIXct object (if not already)
+combined_data2$created_at <- as.POSIXct(combined_data2$created_at)
+
+# Create the time series plot using ggplot2
+library(zoo)
+combined_data2$created_at <- as.POSIXct(combined_data2$created_at)
+
+# Add a new column with the week of each date
+combined_data2$month <- as.yearmon(combined_data2$month)
+
+# Calculate the average sentiment score for each month
+monthly_avg_sentiment <- combined_data2 %>%
+  group_by(month) %>%
+  summarize(avg_sentiment = mean(continuous_sentiment, na.rm = TRUE))
+
+# Create the time series plot using ggplot2
+ggplot(monthly_avg_sentiment, aes(x = as.Date(as.yearmon(month)), y = avg_sentiment)) +
+  geom_line() +
+  labs(title = "Monthly Average Sentiment Scores",
+       x = "Date",
+       y = "Average Sentiment Score") +
+  theme_minimal()
+# Create the bar plot using ggplot2
+sentiment_df <- data.frame(sentiment = names(sentiment_distribution), frequency = as.vector(sentiment_distribution))
+
+# Create the bar plot using ggplot2
+
+
+ggplot(sentiment_df, aes(x = sentiment, y = frequency, fill = sentiment)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = frequency), vjust = -0.5, size = 3) +  # Add frequency labels above the bars
+  scale_fill_manual(values = c("positive" = "green", "neutral" = "yellow", "negative" = "red")) +
+  labs(title = "Sentiment Distribution for Samsung Tweets",
+       x = "Sentiment",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(panel.grid.major = element_line(color = "gray", linewidth = 0.2),  # Use linewidth instead of size
+        panel.grid.minor = element_blank()) +
+  coord_flip()
+
+
+
+  #wordcloud analysis filtered by month for samsung
+
+  # Step 1: Filter data for the months of August and October
+filtered_data <- combined_combined_data %>%
+  mutate(month = format(as.Date(date), "%B")) %>%  # Add a new column with the month name
+  filter(month %in% c("August", "October")) %>%
+  select(review)
+
+# Step 2: Create a Corpus from the review column
+corpus <- Corpus(VectorSource(filtered_data$review))
+
+# Step 3: Preprocess the text data (remove punctuation, numbers, and convert to lowercase)
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+
+library(wordcloud2)
+library(tm)
+library(slam)
+library(RColorBrewer)
+
+# Step 4: Create the word cloud
+wordcloud(corpus,  max.words = 100,random.order = FALSE, colors = brewer.pal(8, "Dark2"))
+wordcloud(corpus, max.words = 100, random.order = FALSE, colors = brewer.pal(9, "Dark2"))
+wordcloud(corpus, max.words = 100, random.order = FALSE, color = "random-light",
+          backgroundColor = "black", size = 1.5, fontFamily = "Segoe UI")
+
+
+red_black_colors <- colorRampPalette(c("red", "black"))(100)
+
+# Create a word cloud using the red-black color palette
+wordcloud(words = names(corpus), freq = corpus, scale = c(4, 0.3),
+          min.freq = 1, max.words = 100, random.order = FALSE, rot.per = 0.35,
+          colors = red_black_colors)
