@@ -1,0 +1,84 @@
+rsconnect::setAccountInfo(name='devanga-kumarage',
+                          token='BBAC96A544A579175C996916F6CFD6EC',
+                          secret='1BA5IpV42DIkaR1q6r2vSmZkj7DtMHiUWBs5+O21')
+
+
+
+ui <- fluidPage(
+  titlePanel("Customer Churn Prediction App"),
+  mainPanel(
+    h3("Predict Customer Churn"),
+    numericInput(inputId = "CurrentEquipmentDaysInput", label = "Current Equipment Days:", value = 0),
+    radioButtons(inputId = "MadeCallToRetentionTeamYesInput", label = "Made Call to Retention Team:",
+                 choices = c("Yes", "No"), selected = "No"),
+    numericInput(inputId = "RetentionCallsInput", label = "Retention Calls:", value = 0),
+    numericInput(inputId = "RetentionOffersAcceptedInput", label = "Retention Offers Accepted:", value = 0),
+    numericInput(inputId = "ActiveSubsInput", label = "Active Subs:", value = 0),
+    actionButton("predictButton", "Predict Churn"),
+    p(""),
+    h3("Churn Prediction Result:"),
+    verbatimTextOutput("predictionOutput"),
+    
+    # New plot output for bar plot
+    plotOutput("churnProbabilityPlot")
+  )
+)
+
+# Define server logic
+server <- function(input, output) {
+  
+  # Define reactive values to store calculations based on user inputs
+  storedVals <- reactiveValues()
+  
+  observeEvent(input$predictButton, {
+    # Validate and convert input values to the correct data types
+    currentEquipmentDays <- as.numeric(input$CurrentEquipmentDaysInput)
+    retentionCalls <- as.numeric(input$RetentionCallsInput)
+    retentionOffersAccepted <- as.numeric(input$RetentionOffersAcceptedInput)
+    activeSubs <- as.numeric(input$ActiveSubsInput)
+    
+    # Convert "MadeCallToRetentionTeamYes" to numeric (0 and 1)
+    madeCallToRetentionTeam <- ifelse(input$MadeCallToRetentionTeamYesInput == "Yes", 1, 0)
+    
+    # Create the prediction data frame
+    predictionData <- data.frame(
+      CurrentEquipmentDays = currentEquipmentDays,
+      MadeCallToRetentionTeamYes = madeCallToRetentionTeam,
+      RetentionCalls = retentionCalls,
+      RetentionOffersAccepted = retentionOffersAccepted,
+      ActiveSubs = activeSubs
+    )
+    
+    print(predictionData) # Print predictionData to see its contents
+    
+    # Perform the prediction using the trained random forest model
+    storedVals$modelEstimate <- predict(fit_RF_randomUndersamp1, newdata = predictionData, type = "response")
+    
+    # Print the churn predictions in the R console
+    print("Churn Predictions:")
+    print(storedVals$modelEstimate)
+  })
+  
+  output$outputModelEstimate <- renderText({
+    if (!is.null(storedVals$modelEstimate)) {
+      churn_prediction <- ifelse(storedVals$modelEstimate == 1, "Churn", "Not Churn")
+      paste("Churn Prediction Result: ", churn_prediction)
+    }
+  })
+  
+  output$churnProbabilityPlot <- renderPlot({
+    if (!is.null(storedVals$modelEstimate)) {
+      churn_prob <- ifelse(storedVals$modelEstimate == 1, 1, 0)  # Convert to 0 or 1 for barplot
+      barplot(churn_prob, names.arg = "Churn Probability", main = "Churn Probability", ylim = c(0, 1))
+    }
+  })
+}
+# Run the Shiny app
+shinyApp(ui=ui, server=server)
+rsconnect::removeApp(appName = "churne")
+rsconnect::deployApp(appDir = "C:/Users/devan/app/churned")
+rsconnect::deployApp('C:/Users/devan/app/churn')
+
+setwd("C:/Users/devan/tryagain")
+options(rsconnect.max.bundle.files = 15000)
+# Run the application 
